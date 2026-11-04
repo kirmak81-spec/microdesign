@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from PIL import Image, ImageOps
 from shop.models import Category, Product, ProductImage
+from shop.catalog_images import preview_pairs
 
 
 class Command(BaseCommand):
@@ -116,8 +117,20 @@ class Command(BaseCommand):
                             return None
                     return (str(relative), index)
 
+                source_images = meta.get("images", [])
+                previews = {
+                    pair["remove_index"]
+                    for pair in preview_pairs(source_images, folder)
+                }
                 prepared = list(
-                    pool.map(prepare_image, enumerate(meta.get("images", [])))
+                    pool.map(
+                        prepare_image,
+                        (
+                            (index, image)
+                            for index, image in enumerate(source_images)
+                            if index not in previews
+                        ),
+                    )
                 )
                 image_values = [entry for entry in prepared if entry is not None]
                 missing += len(prepared) - len(image_values)

@@ -9,3 +9,5 @@ staticfiles/
 !.env.example
 .local-secret
 *.log
+
+.backups/
