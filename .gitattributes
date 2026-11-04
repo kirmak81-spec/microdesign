@@ -1,0 +1,2 @@
+# Preserve source HTML snapshots verbatim, including upstream whitespace.
+docs/source-*.html -whitespace
