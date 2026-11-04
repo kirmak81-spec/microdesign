@@ -1,0 +1,67 @@
+# Local development only. The application is reachable only from this computer.
+name: microdesign-store
+
+x-app: &app
+  image: microdesign-store:local
+  build: .
+  user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+  environment: &app-env
+    DEBUG: "1"
+    ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+    POSTGRES_HOST: db
+    POSTGRES_DB: microdesign
+    POSTGRES_USER: microdesign
+    POSTGRES_PASSWORD: local-development-only
+    PAYMENTS_ENABLED: "0"
+  volumes:
+    - .:/app
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: microdesign
+      POSTGRES_USER: microdesign
+      POSTGRES_PASSWORD: local-development-only
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U microdesign -d microdesign"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  init:
+    <<: *app
+    volumes:
+      - .:/app
+      - ../catalog:/catalog:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - >-
+        python manage.py migrate --noinput &&
+        python manage.py import_pages &&
+        python manage.py import_catalog /catalog
+
+  web:
+    <<: *app
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:

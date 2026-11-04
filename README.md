@@ -2,7 +2,41 @@
 
 Отдельное Django-приложение. `../catalog` и `../site-mirror` не изменяются.
 
-## Запуск
+## Запуск в Docker (рекомендуется для локальной разработки)
+
+Из папки `microdesign-store`:
+
+```bash
+docker compose up --build -d
+docker compose logs -f init web
+```
+
+Сайт: http://localhost:8000. Админка: http://localhost:8000/admin/.
+Первый запуск дождётся PostgreSQL, применит миграции и импортирует страницы/каталог. Если уже есть локальные WebP в `media/`, они используются повторно; иначе первый импорт займёт несколько минут. Исходный `../catalog` подключается только к задаче импорта и только для чтения. `site-mirror` не подключается.
+
+Создать администратора (после завершения `init`):
+
+```bash
+docker compose exec web python manage.py createsuperuser
+```
+
+Проверить приложение на PostgreSQL:
+
+```bash
+docker compose exec web python manage.py test
+```
+
+Остановка с сохранением данных:
+
+```bash
+docker compose down
+```
+
+PostgreSQL хранится в отдельном Docker volume, фотографии — в локальной `media/`. SQLite-база остаётся отдельной и не изменяется: учётные записи и заказы из неё автоматически в PostgreSQL не переносятся. Повторный импорт сохраняет редакторские изменения в PostgreSQL.
+
+Изменения исходников видны сразу благодаря bind mount и Django autoreload. Если порт 8000 занят: `WEB_PORT=8001 docker compose up -d`. На Linux с UID/GID, отличными от 1000, передавайте `LOCAL_UID=$(id -u) LOCAL_GID=$(id -g)` перед командами Compose, которым нужен запуск контейнера. Платежи в этом локальном окружении отключены. Это конфигурация разработки, не production-развёртывание.
+
+## Запуск без Docker
 
 ```bash
 uv venv .venv
@@ -43,7 +77,7 @@ uv pip install --python .venv/bin/python -r requirements.txt
 .venv/bin/python manage.py makemigrations --check --dry-run
 ```
 
-Тесты проверяют поиск, HTTP/CSRF, корзину, цены на сервере, доступ к заказам, повторные уведомления и поддельные подписи Робокассы, безопасный повторный импорт. Проверка PostgreSQL и живой платёж ещё не выполнялись.
+Тесты проверяют поиск, HTTP/CSRF, корзину, цены на сервере, доступ к заказам, повторные уведомления и поддельные подписи Робокассы, безопасный повторный импорт. Все 12 тестов проверены на SQLite и PostgreSQL в Docker. Живой платёж ещё не проверялся.
 
 ## Перед запуском продаж
 

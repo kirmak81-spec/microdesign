@@ -182,9 +182,12 @@ class StoreTests(TestCase):
 
     @override_settings(PAYMENTS_ENABLED=False)
     def test_payments_disabled_by_default(self):
-        self.assertIsNone(payment_url(self.make_order()))
+        order = self.make_order()
+        self.assertIsNone(payment_url(order))
         self.assertEqual(
-            self.client.post("/payments/robokassa/result/", {"InvId": 1}).status_code,
+            self.client.post(
+                "/payments/robokassa/result/", {"InvId": order.pk}
+            ).status_code,
             400,
         )
 
