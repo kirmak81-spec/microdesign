@@ -1572,23 +1572,32 @@ footer {
 .gallery-main { position:relative; overflow:hidden; touch-action:pan-y pinch-zoom; }
 .gallery-main img { user-select:none; -webkit-user-drag:none; }
 .thumbnails { position:relative; }
+/* The visible circles are 20% smaller; the transparent hit area stays 44px. */
 .gallery-nav {
   position:absolute;
   top:50%;
   transform:translateY(-50%);
   display:grid;
   place-items:center;
-  width:44px;
-  height:44px;
-  padding:10px;
+  width:35.2px;
+  height:35.2px;
+  padding:8px;
   border:1px solid var(--line);
   border-radius:50%;
-  background:rgba(250,249,246,.95);
+  background:rgba(250,249,246,.60);
   box-shadow:0 2px 8px #24272215;
+  color:var(--ink);
+  transition:background-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
   z-index:1;
 }
-.gallery-nav:hover { background:var(--ink); color:white; }
-.gallery-nav svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.7; }
+.gallery-nav::after { content:""; position:absolute; inset:-4.4px; border-radius:50%; }
+.gallery-nav:hover {
+  background:rgba(36,39,34,.25);
+  color:var(--ink);
+  box-shadow:0 3px 10px #2427221a;
+  transform:translateY(-50%) scale(1.04);
+}
+.gallery-nav svg { width:17.6px; height:17.6px; fill:none; stroke:currentColor; stroke-width:1.7; }
 .gallery-prev { left:12px; }
 .gallery-next { right:12px; }
 .gallery-counter {
@@ -1597,7 +1606,7 @@ footer {
   left:50%;
   transform:translateX(-50%);
   border-radius:20px;
-  background:rgba(36,39,34,.75);
+  background:rgba(36,39,34,.60);
   color:white;
   font-size:12px;
   font-variant-numeric:tabular-nums;
