@@ -1,0 +1,23 @@
+services:
+  preview:
+    image: microdesign-store:local
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    env_file: .env.preview
+    environment:
+      DJANGO_SETTINGS_MODULE: config.preview_settings
+      DEBUG: "0"
+      ALLOWED_HOSTS: localhost,127.0.0.1,kirmak.servebeer.com
+      POSTGRES_HOST: db
+      POSTGRES_DB: microdesign
+      POSTGRES_USER: microdesign
+      POSTGRES_PASSWORD: local-development-only
+      PAYMENTS_ENABLED: "0"
+      CSRF_TRUSTED_ORIGINS: https://kirmak.servebeer.com
+    volumes:
+      - .:/app
+    ports:
+      - "127.0.0.1:18000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2
