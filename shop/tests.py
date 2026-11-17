@@ -199,6 +199,20 @@ class StoreTests(TestCase):
 
 
 class ImportTests(TestCase):
+    def test_import_nested_categories(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            categories = [
+                {"name": "Э.В.М.", "path": "root", "source_url": "https://microdisign.ru/products/smola", "products": []},
+                {"name": "Авиация", "path": "root/aviation", "source_url": "https://microdisign.ru/products/smola/aviation", "parent_source_url": "https://microdisign.ru/products/smola", "products": []},
+                {"name": "1:72", "path": "root/aviation/72", "source_url": "https://microdisign.ru/products/smola/aviation/72", "parent_source_url": "https://microdisign.ru/products/smola/aviation", "products": []},
+            ]
+            (root / "catalog_metadata.json").write_text(json.dumps({"categories": categories}))
+            call_command("import_catalog", str(root), verbosity=0)
+            self.assertEqual(Category.objects.get(name="1:72").parent.parent.name, "Э.В.М.")
+            call_command("import_catalog", str(root), verbosity=0)
+            self.assertEqual(Category.objects.count(), 3)
+
     def test_import_images_idempotency_and_editor_changes(self):
         with TemporaryDirectory() as tmp, TemporaryDirectory() as media:
             root = Path(tmp)
@@ -242,3 +256,34 @@ class ImportTests(TestCase):
                 p.refresh_from_db()
                 self.assertEqual(p.title, "Изменено редактором")
                 self.assertEqual(ProductImage.objects.count(), 1)
+
+
+class CategoryTreeTests(TestCase):
+    def setUp(self):
+        self.root = Category.objects.create(name="Авиация", slug="air-root")
+        self.child = Category.objects.create(name="Самолёты", slug="planes", parent=self.root)
+        self.leaf = Category.objects.create(name="Масштаб 1:48", slug="planes-48", parent=self.child)
+        self.other = Category.objects.create(name="Флот", slug="ships")
+        Product.objects.create(category=self.leaf, title="Самолёт", slug="plane")
+        Product.objects.create(category=self.other, title="Корабль", slug="ship")
+
+    def test_navigation_and_parent_includes_descendants(self):
+        response = self.client.get('/catalog/', {'category': 'air-root'})
+        self.assertContains(response, 'Самолёт')
+        self.assertNotContains(response, 'Корабль')
+        categories = list(response.context['categories'])
+        self.assertEqual([(c.name, c.depth, c.count) for c in categories[:3]], [
+            ('Авиация', 0, 1), ('Самолёты', 1, 1), ('Масштаб 1:48', 2, 1),
+        ])
+        self.assertEqual(self.client.get('/catalog/', {'category': 'planes'}).context['page_obj'].paginator.count, 1)
+        self.assertEqual(self.client.get('/catalog/', {'category': 'missing'}).context['page_obj'].paginator.count, 0)
+
+    def test_cycle_rejected_in_admin_form(self):
+        from django.contrib.admin.sites import AdminSite
+        from .admin import CategoryAdmin
+        form_class = CategoryAdmin(Category, AdminSite()).get_form(None, self.root)
+        form = form_class(data={'name': self.root.name, 'slug': self.root.slug, 'position': 0, 'parent': self.leaf.pk}, instance=self.root)
+        self.assertFalse(form.is_valid())
+        self.assertIn('parent', form.errors)
+
+

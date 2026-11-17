@@ -40,13 +40,41 @@ def home(request):
     )
 
 
+def category_tree():
+    categories = list(Category.objects.annotate(
+        count=Count("products", filter=Q(products__active=True))
+    ).order_by("position", "name", "pk"))
+    children = {}
+    for category in categories:
+        children.setdefault(category.parent_id, []).append(category)
+    result = []
+
+    def visit(category, depth):
+        category.depth = depth
+        category.tree_children = children.get(category.pk, [])
+        category.descendant_ids = [category.pk]
+        result.append(category)
+        for child in children.get(category.pk, []):
+            visit(child, depth + 1)
+            category.descendant_ids.extend(child.descendant_ids)
+            category.count += child.count
+
+    for root in children.get(None, []):
+        visit(root, 0)
+    return result
+
+
 def catalog(request):
     items = products()
     category = request.GET.get("category", "")
     q = request.GET.get("q", "").strip()[:150]
     scale = request.GET.get("scale", "")
+    categories = category_tree()
+    selected = next((c for c in categories if c.slug == category), None)
+    for node in categories:
+        node.tree_open = bool(selected and selected.pk in node.descendant_ids)
     if category:
-        items = items.filter(category__slug=category)
+        items = items.filter(category_id__in=selected.descendant_ids if selected else [])
     if q:
         # SQLite's case folding does not cover Cyrillic. Casefold candidate titles for local parity.
         if settings.DATABASES["default"]["ENGINE"].endswith("sqlite3"):
@@ -70,19 +98,21 @@ def catalog(request):
     page = Paginator(items, 24).get_page(request.GET.get("page"))
     query = request.GET.copy()
     query.pop("page", None)
+    category_query = query.copy()
+    category_query.pop("category", None)
     return render(
         request,
         "shop/catalog.html",
         {
             "page_obj": page,
-            "categories": Category.objects.annotate(
-                count=Count("products", filter=Q(products__active=True))
-            ).order_by("position", "name"),
+            "categories": categories,
+            "category_roots": [c for c in categories if c.parent_id is None],
             "scales": Product.objects.exclude(scale="")
             .values_list("scale", flat=True)
             .distinct()
             .order_by("scale"),
             "query": query.urlencode(),
+            "category_query": category_query.urlencode(),
             "q": q,
             "selected_category": category,
             "selected_scale": scale,

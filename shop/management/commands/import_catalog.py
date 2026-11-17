@@ -34,11 +34,22 @@ class Command(BaseCommand):
         data = json.loads(manifest.read_text())
         imported = skipped = missing = images = 0
         pool = ThreadPoolExecutor(max_workers=4)
+        categories_by_source = {}
         for pos, category in enumerate(data["categories"]):
-            cat_slug = category["source_url"].rstrip("/").split("/")[-1]
+            source_url = category["source_url"].rstrip("/")
+            parent_url = category.get("parent_source_url")
+            if parent_url and parent_url.rstrip("/") not in categories_by_source:
+                raise CommandError(f"Parent category must precede child: {parent_url}")
+            parent = categories_by_source.get(parent_url.rstrip("/")) if parent_url else None
+            cat_slug = source_url.split("/")[-1]
+            if parent:
+                cat_slug = parent.slug + "-" + cat_slug
+                if len(cat_slug) > 200:
+                    cat_slug = cat_slug[:180] + "-" + hashlib.sha256(source_url.encode()).hexdigest()[:12]
             cat, _ = Category.objects.get_or_create(
-                slug=cat_slug, defaults={"name": category["name"], "position": pos}
+                slug=cat_slug, defaults={"name": category["name"], "position": pos, "parent": parent}
             )
+            categories_by_source[source_url] = cat
             for record_pos, record in enumerate(category["products"]):
                 folder = (root / category["path"] / record["path"]).resolve()
                 if not folder.is_relative_to(root):

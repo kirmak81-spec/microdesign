@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.conf import settings
 from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.urls import reverse
 
@@ -9,6 +10,18 @@ class Category(models.Model):
     name = models.CharField("Название", max_length=200)
     slug = models.SlugField(unique=True, max_length=200)
     position = models.PositiveIntegerField("Порядок", default=0)
+
+    parent = models.ForeignKey("self", verbose_name="Родительский раздел", null=True, blank=True, on_delete=models.PROTECT, related_name="children")
+
+    def clean(self):
+        super().clean()
+        ancestor = self.parent
+        seen = set()
+        while ancestor is not None:
+            if ancestor.pk == self.pk and self.pk is not None or ancestor.pk in seen:
+                raise ValidationError({"parent": "Раздел не может быть вложен в себя или своего потомка."})
+            seen.add(ancestor.pk)
+            ancestor = ancestor.parent
 
     class Meta:
         ordering = ["position", "name"]
