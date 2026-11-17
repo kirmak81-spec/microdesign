@@ -12,7 +12,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
-from .models import Category, Product, Page, Order, OrderItem
+from .models import Category, Product, Page, Order, OrderItem, Banner, News
 from .forms import SignupForm, CheckoutForm
 from .payments import payment_url, valid_result
 
@@ -32,6 +32,7 @@ def home(request):
         "shop/home.html",
         {
             "featured": featured,
+            "banners": Banner.objects.filter(active=True).select_related("product", "news"),
             "categories": Category.objects.annotate(
                 count=Count("products", filter=Q(products__active=True))
             ).order_by("position", "name"),
@@ -119,6 +120,16 @@ def catalog(request):
             "sort": sort,
         },
     )
+
+
+def news_list(request):
+    entries = News.objects.filter(published=True, published_at__lte=timezone.now())
+    return render(request, "shop/news_list.html", {"page_obj": Paginator(entries, 12).get_page(request.GET.get("page"))})
+
+
+def news_detail(request, slug):
+    entry = get_object_or_404(News, slug=slug, published=True, published_at__lte=timezone.now())
+    return render(request, "shop/news_detail.html", {"entry": entry})
 
 
 def product(request, slug):

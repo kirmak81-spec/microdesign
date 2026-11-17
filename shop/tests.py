@@ -287,3 +287,86 @@ class CategoryTreeTests(TestCase):
         self.assertIn('parent', form.errors)
 
 
+class NewsAndBannerTests(TestCase):
+    def setUp(self):
+        from .models import News, Banner
+        self.news = News.objects.create(title='Новая модель', slug='новая-модель', body='Текст новости', published=True)
+        self.draft = News.objects.create(title='Черновик', slug='draft', body='Текст', published=False)
+        self.future = News.objects.create(title='Будущая', slug='future', body='Текст', published=True, published_at=timezone.now() + timezone.timedelta(days=1))
+        self.banner = Banner.objects.create(title='Новости модели', image='banners/test.jpg', news=self.news, overlay_text='Новинка', show_grid=False)
+
+    def test_published_news_and_drafts(self):
+        listing = self.client.get('/news/')
+        self.assertContains(listing, self.news.title)
+        self.assertNotContains(listing, self.draft.title)
+        self.assertNotContains(listing, self.future.title)
+        self.assertEqual(self.client.get(self.news.get_absolute_url()).status_code, 200)
+        self.assertEqual(self.client.get(self.draft.get_absolute_url()).status_code, 404)
+        self.assertEqual(self.client.get(self.future.get_absolute_url()).status_code, 404)
+
+    def test_banner_on_home_and_publication_controls(self):
+        response = self.client.get('/')
+        self.assertContains(response, 'Новости модели')
+        self.assertContains(response, 'Новинка')
+        self.assertContains(response, self.news.get_absolute_url())
+        self.assertNotContains(response, 'class="drawing-grid"')
+        self.news.published = False
+        self.news.save()
+        self.assertEqual(self.banner.target_url, '')
+        self.banner.active = False
+        self.banner.save()
+        self.assertNotContains(self.client.get('/'), 'Новости модели')
+
+    def test_banner_link_validation(self):
+        from django.core.exceptions import ValidationError
+        from .models import Banner
+        for url in ['javascript:alert(1)', '//evil.example', '/\\\\evil.example']:
+            banner = Banner(title='Тест', image='banners/test.jpg', link_url=url)
+            with self.assertRaises(ValidationError):
+                banner.full_clean()
+        for url in ['/news/', 'https://example.com/path']:
+            Banner(title='Тест', image='banners/test.jpg', link_url=url).full_clean()
+        self.banner.link_url = '/news/'
+        with self.assertRaises(ValidationError):
+            self.banner.full_clean()
+
+
+class BannerAdminSourceTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from .models import News
+        cls.admin = get_user_model().objects.create_superuser(username='editor', password='test-password')
+        cls.cat = Category.objects.create(name='Категория', slug='category-admin')
+        cls.product = Product.objects.create(category=cls.cat, title='Товар', slug='admin-product')
+        cls.other = Product.objects.create(category=cls.cat, title='Другой', slug='other-product')
+        cls.photo = ProductImage.objects.create(product=cls.product, image='products/test.webp')
+        cls.other_photo = ProductImage.objects.create(product=cls.other, image='products/other.webp')
+        cls.news = News.objects.create(title='Новость', slug='news-admin', body='Текст', image='news/test.webp')
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+
+    def data(self, **changes):
+        data = {'title': 'Баннер', 'subtitle': '', 'label': '', 'overlay_text': '', 'image_alt': '', 'show_grid': 'on', 'position': '0', 'active': 'on', 'product': '', 'news': '', 'link_url': '', 'product_image_id': '', 'news_image_id': '', '_save': 'Сохранить'}
+        data.update(changes)
+        return data
+
+    def test_select_product_image_and_reject_another_products_image(self):
+        from .models import Banner
+        invalid = self.client.post('/admin/shop/banner/add/', self.data(product=self.product.pk, product_image_id=self.other_photo.pk))
+        self.assertEqual(invalid.status_code, 200)
+        self.assertFalse(Banner.objects.filter(title='Баннер').exists())
+        response = self.client.post('/admin/shop/banner/add/', self.data(product=self.product.pk, product_image_id=self.photo.pk))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Banner.objects.get(title='Баннер').image.name, self.photo.image.name)
+
+    def test_select_news_image_and_permissions(self):
+        from .models import Banner
+        response = self.client.post('/admin/shop/banner/add/', self.data(news=self.news.pk, news_image_id=self.news.pk))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Banner.objects.get(title='Баннер').image.name, self.news.image.name)
+        response = self.client.get('/admin/shop/banner/source/', {'type': 'product', 'id': self.product.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['images'][0]['id'], self.photo.pk)
+        self.client.logout()
+        self.assertEqual(self.client.get('/admin/shop/banner/source/', {'type': 'product', 'id': self.product.pk}).status_code, 302)

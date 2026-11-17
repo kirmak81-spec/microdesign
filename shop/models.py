@@ -2,6 +2,8 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
+from django.utils import timezone
 from django.db import models
 from django.urls import reverse
 
@@ -10,7 +12,6 @@ class Category(models.Model):
     name = models.CharField("Название", max_length=200)
     slug = models.SlugField(unique=True, max_length=200)
     position = models.PositiveIntegerField("Порядок", default=0)
-
     parent = models.ForeignKey("self", verbose_name="Родительский раздел", null=True, blank=True, on_delete=models.PROTECT, related_name="children")
 
     def clean(self):
@@ -89,6 +90,70 @@ class ProductImage(models.Model):
         ordering = ["position", "pk"]
         verbose_name = "Фотография"
         verbose_name_plural = "Фотографии"
+
+
+class News(models.Model):
+    title = models.CharField("Заголовок", max_length=250)
+    slug = models.SlugField("Адрес", max_length=240, unique=True, allow_unicode=True)
+    summary = models.TextField("Краткое описание", blank=True)
+    body = models.TextField("Текст новости")
+    image = models.ImageField("Изображение", upload_to="news/%Y/%m", blank=True)
+    published = models.BooleanField("Опубликована", default=False)
+    published_at = models.DateTimeField("Дата публикации", default=timezone.now)
+
+    class Meta:
+        ordering = ["-published_at", "-pk"]
+        verbose_name = "Новость"
+        verbose_name_plural = "Новости"
+
+    def __str__(self):
+        return self.title
+
+    def get_absolute_url(self):
+        return reverse("news_detail", args=[self.slug])
+
+
+class Banner(models.Model):
+    title = models.CharField("Заголовок нижней панели", max_length=250)
+    subtitle = models.CharField("Подпись нижней панели", max_length=250, blank=True)
+    label = models.CharField("Верхняя подпись", max_length=150, blank=True, default="МИКРОДИЗАЙН / ИЗ КАТАЛОГА")
+    overlay_text = models.CharField("Крупный текст поверх изображения", max_length=200, blank=True)
+    image = models.ImageField("Изображение", upload_to="banners/%Y/%m")
+    image_alt = models.CharField("Описание изображения", max_length=250, blank=True)
+    show_grid = models.BooleanField("Показывать сетку", default=True)
+    product = models.ForeignKey(Product, verbose_name="Ссылка на товар", null=True, blank=True, on_delete=models.SET_NULL)
+    news = models.ForeignKey(News, verbose_name="Ссылка на новость", null=True, blank=True, on_delete=models.SET_NULL)
+    link_url = models.CharField("Другой адрес ссылки", max_length=2000, blank=True, help_text="Внутренний адрес с / или полный адрес https://…")
+    position = models.PositiveIntegerField("Порядок", default=0)
+    active = models.BooleanField("Показывать", default=True)
+
+    class Meta:
+        ordering = ["position", "pk"]
+        verbose_name = "Баннер"
+        verbose_name_plural = "Баннерная карусель"
+
+    def __str__(self):
+        return self.title
+
+    def clean(self):
+        super().clean()
+        if sum(bool(x) for x in (self.product_id, self.news_id, self.link_url)) > 1:
+            raise ValidationError("Выберите только один вариант ссылки: товар, новость или другой адрес.")
+        if self.link_url:
+            if self.link_url.startswith("/") and not self.link_url.startswith("//") and "\\" not in self.link_url and not any(c.isspace() for c in self.link_url):
+                return
+            try:
+                URLValidator(schemes=["http", "https"])(self.link_url)
+            except ValidationError:
+                raise ValidationError({"link_url": "Укажите адрес, начинающийся с /, http:// или https://."})
+
+    @property
+    def target_url(self):
+        if self.product_id and self.product.active:
+            return self.product.get_absolute_url()
+        if self.news_id and self.news.published and self.news.published_at <= timezone.now():
+            return self.news.get_absolute_url()
+        return self.link_url
 
 
 class Page(models.Model):

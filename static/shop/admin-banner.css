@@ -1,0 +1,5 @@
+.banner-image-options { display:flex; flex-wrap:wrap; gap:10px; margin:10px 0 }
+.banner-image-choice { cursor:pointer; border:2px solid transparent; background:var(--body-bg); padding:4px; color:var(--body-fg) }
+.banner-image-choice[aria-pressed="true"] { border-color:var(--link-fg) }
+.banner-image-choice img { width:100px; height:80px; object-fit:contain; display:block; background:white }
+.banner-image-help { margin:8px 0; color:var(--body-quiet-color) }
