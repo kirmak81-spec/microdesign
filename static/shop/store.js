@@ -66,3 +66,4 @@ document.querySelectorAll('[data-product-gallery]').forEach(gallery => {
   stage.addEventListener('pointercancel', () => { gesture = null; });
   stage.addEventListener('lostpointercapture', () => { gesture = null; });
 });
+

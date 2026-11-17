@@ -147,9 +147,27 @@ def product(request, slug):
 
 
 def page(request, slug):
-    return render(
-        request, "shop/page.html", {"page": get_object_or_404(Page, slug=slug)}
-    )
+    info_page = get_object_or_404(Page, slug=slug)
+    context = {"page": info_page}
+    if slug == "contacts":
+        intro, shop_marker, rest = info_page.body.partition("Интернет-магазин:")
+        shop_text, maker_marker, maker_text = rest.partition("Производитель:")
+        if shop_marker and maker_marker:
+            context["contact_sections"] = {
+                "intro": intro.strip(),
+                "shop": shop_text.strip(),
+                "maker": maker_text.strip(),
+            }
+    elif slug == "cash":
+        intro, order_marker, rest = info_page.body.partition("Шаг 1.")
+        order_text, delivery_marker, delivery_text = rest.partition("Отправка Вашего заказа")
+        if order_marker and delivery_marker:
+            context["delivery_sections"] = {
+                "intro": intro.strip(),
+                "order": (order_marker + order_text).strip(),
+                "delivery": (delivery_marker + delivery_text).strip(),
+            }
+    return render(request, "shop/page.html", context)
 
 
 def cart_rows(request):
